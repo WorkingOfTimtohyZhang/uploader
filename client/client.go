@@ -95,7 +95,7 @@ func main() {
 						} else {
 							postContent(fileSHA1, i, string(buffer[:len]))
 						}
-						fmt.Printf("process %d/%d", i, partLen)
+						fmt.Printf("process %d/%d\n", i, partLen)
 					}
 					done(fileSHA1)
 					fmt.Printf("upload done")
