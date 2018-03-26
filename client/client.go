@@ -17,9 +17,10 @@ type resp struct {
 }
 
 var partSize = 4 * 1024 * 1024
+var maxSplit = 4
 var server string
 
-func postContent(tid string, pid int, content string) {
+func postContent(tid string, pid int, content string, c chan int) {
 	header := req.Header{
 		"Accept": "application/json",
 	}
@@ -32,6 +33,7 @@ func postContent(tid string, pid int, content string) {
 	} else {
 		log.Fatalf("post data to %s/%s/part/%s | %v", server, tid, strconv.Itoa(pid), err)
 	}
+	c <- pid
 }
 
 func done(tid string) {
@@ -84,18 +86,32 @@ func main() {
 					partLen := int(math.Ceil(float64(fileSize) / float64(partSize)))
 					fmt.Printf("total %d block\n", partLen)
 					buffer := make([]byte, partSize)
+					c := make(chan int)
+					splitCnt := 0
 					for i := 0; i < partLen; i++ {
 						len, err := f.ReadAt(buffer, int64(i*partSize))
 						if err != nil {
 							if len == 0 {
 								log.Fatalf("read file part %d error | %v", i, err)
 							} else {
-								postContent(fileSHA1, i, string(buffer[:len]))
+								splitCnt++
+								go postContent(fileSHA1, i, string(buffer[:len]), c)
 							}
 						} else {
-							postContent(fileSHA1, i, string(buffer[:len]))
+							splitCnt++
+							go postContent(fileSHA1, i, string(buffer[:len]), c)
 						}
 						fmt.Printf("process %d/%d\n", i, partLen)
+						if splitCnt >= maxSplit {
+							pid := <-c
+							splitCnt--
+							fmt.Printf("process %d done\n", pid)
+						}
+					}
+					for splitCnt > 0 {
+						pid := <-c
+						splitCnt--
+						fmt.Printf("process %d done\n", pid)
 					}
 					done(fileSHA1)
 					fmt.Printf("upload done")
