@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 
+	"bufio"
 	"github.com/gin-gonic/gin"
 )
 
@@ -46,16 +47,39 @@ func main() {
 	r.POST("/:tid/part/:pid", func(c *gin.Context) {
 		tid := c.Param("tid")
 		sPid := c.Param("pid")
-		partContent := c.PostForm("partContent")
-		iPid, iErr := strconv.Atoi(sPid)
-		if iErr == nil {
-			taskMap[tid].pFile.WriteAt([]byte(partContent), int64(iPid*partSize))
-			c.JSON(200, gin.H{
-				"message": "write success",
-			})
-		} else {
-			log.Fatal("[pid]strconv error")
+
+		closer := c.Request.Body
+		iPid, err := strconv.Atoi(sPid)
+		if err != nil {
+			log.Fatal(err)
 		}
+
+		reader := bufio.NewReaderSize(closer, 4094)
+		targetFile := taskMap[tid].pFile
+
+		start := int64(iPid * partSize)
+		p := make([]byte, 1024)
+		for {
+			l, err := reader.Read(p)
+			if l > 0 {
+				n, err := targetFile.WriteAt(p[:l], start)
+				start = start + int64(n)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				log.Fatal(err)
+			}
+		}
+
+		c.JSON(200, gin.H{
+			"message": "write success",
+		})
+
 	})
 	r.POST("/:tid/done", func(c *gin.Context) {
 		tid := c.Param("tid")
